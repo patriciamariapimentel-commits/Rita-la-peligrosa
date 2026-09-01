@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Rita, La Peligrosa — Prototype</title>
+<style>
+  html,body{margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
+  #wrap{height:100vh;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;max-width:100vw;max-height:100vh;background:#172016}
+  #hint{position:fixed;top:8px;left:50%;transform:translateX(-50%);font-size:12px;opacity:.75;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
+<div id="hint">Tap START · Mobile buttons or keyboard: A/D, W/Space, J, K, S</div>
+<script>
+const c=document.getElementById('game'),x=c.getContext('2d');
+x.imageSmoothingEnabled=false;
+
+const W=960,H=540;
+const keys={}; addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true; if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))e.preventDefault()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+let touch={left:false,right:false,jump:false,shoot:false,blast:false,roll:false};
+function button(name, text, left, bottom, w=82){
+ const b=document.createElement('button'); b.textContent=text;
+ b.style=`position:fixed;left:${left};bottom:${bottom};width:${w}px;height:68px;border:2px solid #b8a66a;border-radius:18px;background:#201f1a;color:#fff;font-size:24px;font-weight:800;opacity:.82;z-index:5;`;
+ document.body.appendChild(b);
+ const on=v=>e=>{e.preventDefault();touch[name]=v};
+ b.addEventListener('pointerdown',on(true)); b.addEventListener('pointerup',on(false));
+ b.addEventListener('pointercancel',on(false)); b.addEventListener('pointerleave',on(false));
+}
+button('left','◀','2%', '5%'); button('right','▶','12%', '5%');
+button('roll','↘','22%', '5%'); button('blast','💣','68%', '5%');
+button('shoot','⚡','78%', '5%'); button('jump','▲','88%', '5%');
+
+const world={g:1100};
+const player={x:95,y:400,w:28,h:48,vx:0,vy:0,face:1,on:false,roll:0,hp:3,ammo:99,blasts:3,score:0,inv:0};
+const platforms=[
+ {x:0,y:486,w:960,h:54},{x:60,y:380,w:180,h:22},{x:315,y:330,w:170,h:22},
+ {x:560,y:410,w:150,h:22},{x:775,y:350,w:125,h:22},{x:705,y:250,w:150,h:22}
+];
+const spikes=[{x:245,y:462,w:70,h:24},{x:510,y:462,w:75,h:24},{x:905,y:462,w:55,h:24}];
+const darts=[{x:430,y:307,w:18,h:8,vx:-300,active:true}];
+const gems=[{x:115,y:345,taken:false},{x:365,y:295,taken:false},{x:825,y:315,taken:false}];
+const enemies=[
+ {x:190,y:432,w:28,h:42,vx:45,alive:true,min:150,max:235},
+ {x:590,y:368,w:28,h:42,vx:-40,alive:true,min:560,max:690}
+];
+let shots=[], bombs=[], particles=[], state='menu', deathTimer=0;
+let started=false;
+const startOverlay=document.createElement('div');
+startOverlay.style=`position:fixed;inset:0;display:grid;place-items:center;background:rgba(8,10,7,.88);z-index:20;color:#fff;text-align:center;font-family:monospace`;
+startOverlay.innerHTML=`<div><div style="font-size:42px;font-weight:900;color:#f0d36a">RITA</div><div style="font-size:18px;margin:8px 0 22px">LA PELIGROSA</div><button id="startBtn" style="font-size:22px;font-weight:800;padding:16px 34px;border-radius:14px;border:2px solid #f0d36a;background:#252219;color:#fff">START</button><div style="font:14px system-ui;margin-top:18px;opacity:.8">Temple prototype · original game assets</div></div>`;
+document.body.appendChild(startOverlay);
+document.getElementById('startBtn').addEventListener('click',()=>{
+  started=true; state='play'; startOverlay.remove();
+});
+
+
+function rects(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function reset(){
+ player.x=95;player.y=400;player.vx=0;player.vy=0;player.hp=3;player.inv=0;
+ gems.forEach(g=>g.taken=false); enemies[0].alive=enemies[1].alive=true;
+ shots=[];bombs=[];state='play';deathTimer=0;
+}
+function hurt(){
+ if(player.inv>0||state!=='play')return;
+ player.hp--; player.inv=1.1; burst(player.x+14,player.y+22,'#fff',10);
+ if(player.hp<=0){state='dead';deathTimer=1.0;}
+}
+function burst(px,py,col,n){
+ for(let i=0;i<n;i++)particles.push({x:px,y:py,vx:(Math.random()-.5)*220,vy:(Math.random()-.8)*220,t:.5,c:col});
+}
+function update(dt){
+ if(!started)return;
+ if(state==='dead'){deathTimer-=dt;if(deathTimer<=0)reset();return}
+ player.inv=Math.max(0,player.inv-dt);
+ let L=keys['a']||keys['arrowleft']||touch.left, R=keys['d']||keys['arrowright']||touch.right;
+ let J=keys['w']||keys['arrowup']||keys[' ']||touch.jump, S=keys['s']||keys['arrowdown']||touch.roll;
+ player.vx+=(R-L)*850*dt; player.vx*=Math.pow(.0008,dt);
+ if(Math.abs(player.vx)>170)player.vx=Math.sign(player.vx)*170;
+ if(R)player.face=1;if(L)player.face=-1;
+ if(J&&player.on){player.vy=-430;player.on=false}
+ if(S&&!player.roll)player.roll=.35;
+ if(player.roll>0){player.roll-=dt;player.vx=player.face*230}
+ player.vy+=world.g*dt; player.x+=player.vx*dt; player.y+=player.vy*dt;
+ player.x=Math.max(0,Math.min(W-player.w,player.x));
+ player.on=false;
+ for(const p of platforms){
+   if(player.vy>=0 && player.x+player.w>p.x && player.x<p.x+p.w &&
+      player.y+player.h>=p.y && player.y+player.h-player.vy*dt<=p.y){
+      player.y=p.y-player.h;player.vy=0;player.on=true;
+   }
+ }
+ for(const s of spikes)if(rects(player,s))hurt();
+ for(const g of gems)if(!g.taken&&rects(player,{x:g.x,y:g.y,w:18,h:18})){g.taken=true;player.score+=100;burst(g.x,g.y,'#6ff',12)}
+ for(const e of enemies){
+   if(!e.alive)continue;
+   e.x+=e.vx*dt;if(e.x<e.min||e.x>e.max)e.vx*=-1;
+   if(rects(player,e))hurt();
+ }
+ for(const d of darts){
+   if(d.active){d.x+=d.vx*dt;if(d.x<-30)d.active=false;if(rects(player,d))hurt();}
+ }
+ if((keys['j']||touch.shoot)&&!player._shoot){shots.push({x:player.x+(player.face>0?player.w:0),y:player.y+20,vx:player.face*480,t:.7});}
+ player._shoot=!!(keys['j']||touch.shoot);
+ if((keys['k']||touch.blast)&&!player._blast&&player.blasts>0){
+   bombs.push({x:player.x+(player.face>0?player.w:0),y:player.y+player.h-12,vx:player.face*240,t:2.0});
+   player.blasts--;
+ }
+ player._blast=!!(keys['k']||touch.blast);
+ for(const q of shots){q.x+=q.vx*dt;q.t-=dt;for(const e of enemies)if(e.alive&&rects({x:q.x,y:q.y,w:12,h:5},e)){e.alive=false;player.score+=50;burst(e.x,e.y,'#ffd66b',14);q.t=0}}
+ shots=shots.filter(q=>q.t>0&&q.x>-20&&q.x<W+20);
+ for(const b of bombs){
+   b.x+=b.vx*dt;b.vx*=Math.pow(.08,dt);b.t-=dt;
+   for(const e of enemies)if(e.alive&&Math.abs((e.x+14)-b.x)<30&&Math.abs((e.y+20)-b.y)<35){e.alive=false;player.score+=75}
+   if(b.t<=0){burst(b.x,b.y,'#ff8b45',28);b.t=-1}
+ }
+ bombs=bombs.filter(b=>b.t>0);
+ for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=400*dt;p.t-=dt}
+ particles=particles.filter(p=>p.t>0);
+}
+function draw(){
+ x.clearRect(0,0,W,H);
+ // background
+ x.fillStyle='#18251a';x.fillRect(0,0,W,H);
+ for(let i=0;i<20;i++){x.fillStyle=i%2?'#22351f':'#1d2e1b';x.fillRect((i*83)%W,90+(i%5)*35,60,18)}
+ // temple blocks
+ x.fillStyle='#625a3a';x.fillRect(18,300,115,186);x.fillRect(18,300,115,14);
+ x.fillStyle='#7c7148';x.fillRect(30,315,90,12);
+ // platforms
+ for(const p of platforms){x.fillStyle='#655d3b';x.fillRect(p.x,p.y,p.w,p.h);x.fillStyle='#8a7d4d';x.fillRect(p.x,p.y,p.w,5);x.fillStyle='#403c28';for(let q=p.x+8;q<p.x+p.w-5;q+=34)x.fillRect(q,p.y+12,20,4)}
+ // vines
+ x.strokeStyle='#2e5b2c';x.lineWidth=5;for(let i=0;i<18;i++){x.beginPath();x.moveTo(i*55,0);x.quadraticCurveTo(i*55+20,70,i*55-10,135);x.stroke()}
+ // torches
+ for(const tx of [280,740]){x.fillStyle='#8b5b31';x.fillRect(tx,270,7,38);x.fillStyle='#ffb23e';x.fillRect(tx-5,255,17,18);x.fillStyle='#ffe07a';x.fillRect(tx-1,250,8,18)}
+ // spikes
+ for(const s of spikes){x.fillStyle='#bfc2ad';for(let q=s.x;q<s.x+s.w;q+=14){x.beginPath();x.moveTo(q,s.y+24);x.lineTo(q+7,s.y);x.lineTo(q+14,s.y+24);x.fill()}}
+ // gems
+ for(const g of gems)if(!g.taken){x.fillStyle='#5ce8ff';x.beginPath();x.moveTo(g.x+9,g.y);x.lineTo(g.x+18,g.y+9);x.lineTo(g.x+9,g.y+18);x.lineTo(g.x,g.y+9);x.fill()}
+ // enemies
+ for(const e of enemies)if(e.alive){
+   x.fillStyle='#ddd7bb';x.fillRect(e.x+5,e.y,e.w-10,12);x.fillRect(e.x+8,e.y+12,12,20);
+   x.fillStyle='#504b3b';x.fillRect(e.x+2,e.y+32,9,10);x.fillRect(e.x+17,e.y+32,9,10);
+   x.fillStyle='#191714';x.fillRect(e.x+8,e.y+4,3,3);x.fillRect(e.x+17,e.y+4,3,3);
+ }
+ // darts
+ for(const d of darts)if(d.active){x.fillStyle='#ddd';x.fillRect(d.x,d.y,18,4);x.beginPath();x.moveTo(d.x+18,d.y+2);x.lineTo(d.x+12,d.y-4);x.lineTo(d.x+12,d.y+8);x.fill()}
+ // bombs
+ for(const b of bombs){x.fillStyle='#252525';x.beginPath();x.arc(b.x,b.y,10,0,Math.PI*2);x.fill();x.fillStyle='#ffbf45';x.fillRect(b.x+5,b.y-12,5,5)}
+ // shots
+ x.fillStyle='#ff5948';for(const q of shots)x.fillRect(q.x,q.y,15,5);
+ // Rita
+ drawRita();
+ // particles
+ for(const p of particles){x.globalAlpha=Math.max(0,p.t*2);x.fillStyle=p.c;x.fillRect(p.x,p.y,5,5)}x.globalAlpha=1;
+ // HUD
+ x.fillStyle='#0e0f0c';x.fillRect(18,16,924,54);x.fillStyle='#f0d36a';x.font='bold 22px monospace';x.fillText('RITA, LA PELIGROSA',32,51);
+ x.fillStyle='#fff';x.fillText('HP '+player.hp,330,51);x.fillText('GEMS '+gems.filter(g=>g.taken).length+'/3',530,51);x.fillText('BLAST '+player.blasts,675,51);x.fillText('SCORE '+player.score,790,51);
+ if(state==='dead'){x.fillStyle='rgba(0,0,0,.68)';x.fillRect(0,0,W,H);x.fillStyle='#ffdf70';x.font='bold 54px monospace';x.textAlign='center';x.fillText('¡AY, RITA!',W/2,250);x.font='22px monospace';x.fillText('Restarting…',W/2,292);x.textAlign='left'}
+}
+function drawRita(){
+ let px=player.x,py=player.y, f=player.face;
+ if(player.inv>0&&Math.floor(player.inv*12)%2===0)return;
+ x.save();x.translate(px+14,py);x.scale(f,1);
+ // scarf
+ x.fillStyle='#d43b32';x.fillRect(-15,12,13,6);x.fillRect(-20,17,18,5);
+ // hair bob
+ x.fillStyle='#5a3824';x.fillRect(-10,0,22,15);x.fillRect(-13,6,5,18);x.fillRect(10,6,5,18);
+ // face
+ x.fillStyle='#d69a6e';x.fillRect(-7,7,14,13);x.fillStyle='#201914';x.fillRect(4,11,2,2);
+ // body
+ x.fillStyle='#d6c59a';x.fillRect(-10,20,20,13);x.fillStyle='#4e5a39';x.fillRect(-10,33,9,12);x.fillRect(2,33,9,12);
+ // boots
+ x.fillStyle='#30271d';x.fillRect(-11,44,11,4);x.fillRect(3,44,12,4);
+ // pistol
+ x.fillStyle='#34363a';x.fillRect(8,23,20,5);x.fillRect(22,28,5,7);
+ x.restore();
+}
+let last=performance.now();function loop(t){let dt=Math.min(.033,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script>
+</body>
+</html>
