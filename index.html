@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Rita, La Peligrosa — Prototype</title>
 <style>
-  html,body{margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
+  html,body{margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
   #wrap{height:100vh;display:grid;place-items:center}
   canvas{image-rendering:pixelated;image-rendering:crisp-edges;max-width:100vw;max-height:100vh;background:#172016}
   #hint{position:fixed;top:8px;left:50%;transform:translateX(-50%);font-size:12px;opacity:.75;pointer-events:none}
@@ -13,7 +13,7 @@
 </head>
 <body>
 <div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
-<div id="hint">Tap START · Mobile buttons or keyboard: A/D, W/Space, J, K, S</div>
+
 <script>
 const c=document.getElementById('game'),x=c.getContext('2d');
 x.imageSmoothingEnabled=false;
@@ -25,7 +25,7 @@ addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 let touch={left:false,right:false,jump:false,shoot:false,blast:false,roll:false};
 function button(name, text, left, bottom, w=82){
  const b=document.createElement('button'); b.textContent=text;
- b.style=`position:fixed;left:${left};bottom:${bottom};width:${w}px;height:68px;border:2px solid #b8a66a;border-radius:18px;background:#201f1a;color:#fff;font-size:24px;font-weight:800;opacity:.82;z-index:5;`;
+ b.style=`position:fixed;left:${left};bottom:max(${bottom}, env(safe-area-inset-bottom));width:${w}px;height:68px;border:2px solid #b8a66a;border-radius:18px;background:#201f1a;color:#fff;font-size:24px;font-weight:800;opacity:.82;z-index:5;`;
  document.body.appendChild(b);
  const on=v=>e=>{e.preventDefault();touch[name]=v};
  b.addEventListener('pointerdown',on(true)); b.addEventListener('pointerup',on(false));
@@ -52,7 +52,7 @@ let shots=[], bombs=[], particles=[], state='menu', deathTimer=0;
 let started=false;
 const startOverlay=document.createElement('div');
 startOverlay.style=`position:fixed;inset:0;display:grid;place-items:center;background:rgba(8,10,7,.88);z-index:20;color:#fff;text-align:center;font-family:monospace`;
-startOverlay.innerHTML=`<div><div style="font-size:42px;font-weight:900;color:#f0d36a">RITA</div><div style="font-size:18px;margin:8px 0 22px">LA PELIGROSA</div><button id="startBtn" style="font-size:22px;font-weight:800;padding:16px 34px;border-radius:14px;border:2px solid #f0d36a;background:#252219;color:#fff">START</button><div style="font:14px system-ui;margin-top:18px;opacity:.8">Temple prototype · original game assets</div></div>`;
+startOverlay.innerHTML=`<div><div style="font-size:42px;font-weight:900;color:#f0d36a">RITA</div><div style="font-size:18px;margin:8px 0 22px">LA PELIGROSA</div><button id="startBtn" style="font-size:22px;font-weight:800;padding:16px 34px;border-radius:14px;border:2px solid #f0d36a;background:#252219;color:#fff">START</button><div style="font:14px system-ui;margin-top:18px;opacity:.8">Temple prototype</div></div>`;
 document.body.appendChild(startOverlay);
 document.getElementById('startBtn').addEventListener('click',()=>{
   started=true; state='play'; startOverlay.remove();
